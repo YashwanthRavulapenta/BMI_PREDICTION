@@ -3,110 +3,82 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import accuracy_score
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 # Set visual styles for graphs
 sns.set(style="whitegrid", font_scale=1.2)
 plt.rcParams["figure.figsize"] = (10, 6)
 
-# --- Section 2: Load and Explore Dataset ---
-# Load the dataset
+# --- Section 2: Load and Prepare Dataset ---
 file_path = 'bmi.csv'
 data = pd.read_csv(file_path)
 
-# Preview dataset
-print("First 5 rows of the dataset:")
-print(data.head())
+# Encode categorical variables
+data['Gender'] = data['Gender'].map({'Male': 1, 'Female': 0})  
 
-print("\nDataset Info:")
-print(data.info())
+# Define features and target variable
+X = data[['Height', 'Weight']]
+y = data['BMI']
 
-print("\nSummary Statistics:")
-print(data.describe())
-
-# Check for missing values
-missing_values = data.isnull().sum()
-print("\nMissing Values:")
-print(missing_values)
-
-# Encode categorical variables for Gender and BMI Class
-label_encoder = LabelEncoder()
-data['Gender'] = label_encoder.fit_transform(data['Gender'])  # Encodes 'Male' as 1, 'Female' as 0
-data['BMI Class'] = label_encoder.fit_transform(data['BMI Class'])
-
-# --- Section 3: Prepare Data for Visualization ---
-# Define numeric and categorical features
-categorical_features = ['Gender']
-numerical_features = ['Height', 'Weight', 'BMI']
-target = 'BMI Class'
-
-# Split data for model evaluation (used later)
-X = data[['Gender', 'Height', 'Weight']]
-y = data['BMI Class']
+# Train-Test Split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# --- Section 4: Create Graphs ---
-# 1. Gender Distribution
+# Initialize Linear Regression Model
+lr_model = LinearRegression()
+lr_model.fit(X_train, y_train)
+
+# Predictions
+y_pred = lr_model.predict(X_test)
+residuals = y_test - y_pred  # Calculate residuals
+
+# --- Section 3: Create Graphs ---
+
+# 1. Scatterplot with Regression Line (Height vs BMI)
 plt.figure(figsize=(8, 6))
-sns.countplot(data=data, x='Gender', palette='coolwarm', hue='Gender', dodge=False)
-plt.title("Gender Distribution", fontsize=16)
-plt.xlabel("Gender (0: Female, 1: Male)", fontsize=14)
-plt.ylabel("Count", fontsize=14)
-for i, count in enumerate(data['Gender'].value_counts()):
-    plt.text(i, count + 10, str(count), ha='center', fontsize=12, color="black")
+sns.regplot(x=data["Height"], y=data["BMI"], scatter_kws={"color": "blue"}, line_kws={"color": "red"})
+plt.title("Height vs BMI Regression Line")
+plt.xlabel("Height (cm)")
+plt.ylabel("BMI")
 plt.show()
 
-# 2. BMI Distribution
+# 2. Residual Plot (Fixed: Removed lowess=True to avoid errors)
 plt.figure(figsize=(8, 6))
-sns.histplot(data['BMI'], bins=20, kde=True, color='blue', alpha=0.6)
-plt.title("BMI Distribution", fontsize=16)
-plt.xlabel("BMI", fontsize=14)
-plt.ylabel("Frequency", fontsize=14)
-plt.axvline(data['BMI'].mean(), color='red', linestyle='--', label='Mean BMI')
-plt.axvline(data['BMI'].median(), color='green', linestyle='--', label='Median BMI')
+sns.residplot(x=y_pred, y=residuals, color="green")
+plt.axhline(y=0, color="red", linestyle="--")
+plt.title("Residual Plot")
+plt.xlabel("Predicted BMI")
+plt.ylabel("Residuals")
+plt.show()
+
+# 3. Predicted vs Actual BMI
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x=y_test, y=y_pred, color='purple', alpha=0.6)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')  # Perfect prediction line
+plt.title("Predicted vs Actual BMI")
+plt.xlabel("Actual BMI")
+plt.ylabel("Predicted BMI")
+plt.show()
+
+# 4. Histogram of Residuals
+plt.figure(figsize=(8, 6))
+sns.histplot(residuals, bins=20, kde=True, color="blue", alpha=0.6)
+plt.axvline(residuals.mean(), color='red', linestyle='--', label='Mean Residual')
+plt.title("Distribution of Residuals")
+plt.xlabel("Residual Value")
+plt.ylabel("Frequency")
 plt.legend()
 plt.show()
 
-# 3. Height vs Weight Scatterplot
-plt.figure(figsize=(8, 6))
-sns.scatterplot(x='Height', y='Weight', hue='BMI Class', data=data, palette='cool', edgecolor='w', s=100)
-plt.title("Height vs Weight with BMI Class", fontsize=16)
-plt.xlabel("Height (cm)", fontsize=14)
-plt.ylabel("Weight (kg)", fontsize=14)
-plt.legend(title="BMI Class", bbox_to_anchor=(1.05, 1), loc='upper left')
-plt.show()
-
-# 4. BMI Class Distribution
-plt.figure(figsize=(8, 6))
-sns.countplot(data=data, x='BMI Class', palette='viridis', hue='BMI Class', dodge=False)
-plt.title("BMI Class Distribution", fontsize=16)
-plt.xlabel("BMI Class", fontsize=14)
-plt.ylabel("Frequency", fontsize=14)
-plt.xticks(ticks=range(len(label_encoder.classes_)), labels=label_encoder.classes_)
-plt.show()
-
-# 5. Correlation Matrix Heatmap
-plt.figure(figsize=(10, 8))
-correlation_matrix = data[numerical_features].corr()
-sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
-plt.title("Correlation Matrix Heatmap", fontsize=16)
-plt.show()
-
-# 6. Feature Importance Barplot
-rf_classifier = RandomForestClassifier(random_state=42)
-rf_classifier.fit(X_train, y_train)
-feature_importances = rf_classifier.feature_importances_
+# 5. Feature Importance using Linear Regression Coefficients
+coef_df = pd.DataFrame(lr_model.coef_, index=X.columns, columns=["Coefficient"]).reset_index()
+coef_df.rename(columns={"index": "Feature"}, inplace=True)
 
 plt.figure(figsize=(8, 6))
-sns.barplot(x=feature_importances, y=X.columns, palette='coolwarm')
-plt.title("Feature Importance", fontsize=16)
-plt.xlabel("Importance", fontsize=14)
-plt.ylabel("Features", fontsize=14)
+sns.barplot(x="Coefficient", y="Feature", data=coef_df, hue="Feature", palette='coolwarm', legend=False)
+plt.title("Feature Importance (Linear Regression Coefficients)")
+plt.xlabel("Coefficient Value")
+plt.ylabel("Feature")
 plt.show()
 
-# --- Section 6: Save Figures (Optional) ---
-output_path = 'graphs/'
-# Replace plt.show() with plt.savefig() to save plots
